@@ -50,7 +50,7 @@ Testing these pieces can help ensure that we can handle good and bad file names 
 
 Below we've designed the ER diagram for the supporting DBMS.
 
-![VistPayER](.\VistPayER.drawio.png)
+![VistPayER](VistPayER.drawio.png)
 
 ## Conclusion
 
