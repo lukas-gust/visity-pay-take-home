@@ -1,0 +1,2 @@
+TransactionIdentifier	VisitIdentifier	ProcedureId	Amount
+54321000018	321000011	6	54.03
