@@ -1,3 +1,9 @@
+DROP TABLE IF EXISTS "Visit";
+DROP TABLE IF EXISTS "Procedure";
+DROP TABLE IF EXISTS "Transaction";
+
+VACUUM;
+
 CREATE TABLE "Visit" (
 	"VisitIdentifier"	INTEGER NOT NULL,
 	"GuarantorIdentifier"	INTEGER NOT NULL,
