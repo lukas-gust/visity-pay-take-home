@@ -7,12 +7,17 @@ from os.path import isfile, join, exists, basename
 from datetime import datetime
 import sqlite3 as db
 
+import pdb
+
 
 
 data_dir = './data'
 checkpoint_dir = './data/checkpoint'
 
 class VisitPayFile:
+    """
+    Represents a file and its metadata read from the landing location.
+    """
     def __init__(self, path):
         self.path = path
         self.file_name = basename(path)
@@ -22,15 +27,19 @@ class VisitPayFile:
 
     def __str__(self):
         return 'Path: {}, Type: {}, datetime: {}'.format(self.path, self.ftype, self.datetime)
-        
 
-def filter_data_files(file_list, checkpoints):
+def filter_files_by_type(files, ftype):
+    files = filter(lambda f: f.ftype == ftype, file_list)
+    files = sorted(files, key= lambda o: o.datetime)
+
+    return files
+
+def filter_checkpoints(checkpoint_dir):
+    checkpoints = listdir(checkpoint_dir)
     checkpoints = filter(lambda c: re.match('^\d{8}_\d{6}', c), checkpoints) # can be improved to filter out bad dates
     checkpoints = list(map(lambda c: datetime.strptime(c, '%Y%m%d_%H%M%S'), checkpoints)) # this is a good piece to test
 
-    max_checkpoint = datetime.strptime('20211201_131916', '%Y%m%d_%H%M%S') # max(checkpoints)
-
-    return list(filter(lambda f: f.datetime > max_checkpoint, file_list))
+    return checkpoints
 
 if __name__ == '__main__':
     logging.basicConfig(filename='app.log', level=logging.DEBUG, format='%(asctime)s %(levelname)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
@@ -40,21 +49,24 @@ if __name__ == '__main__':
     file_list = [VisitPayFile(join(data_dir, f)) for f in listdir(data_dir) if isfile(join(data_dir, f))]
 
     if exists(checkpoint_dir): # filter files by datefrom checkpoint to now
-        checkpoints = listdir(checkpoint_dir)
-        checkpoints = filter(lambda c: re.match('^\d{8}_\d{6}', c), checkpoints) # can be improved to filter out bad dates
-        checkpoints = list(map(lambda c: datetime.strptime(c, '%Y%m%d_%H%M%S'), checkpoints)) # this is a good piece to test
+        checkpoints = filter_checkpoints(checkpoint_dir)
 
-        max_checkpoint = datetime.strptime('20211201_131916', '%Y%m%d_%H%M%S') # max(checkpoints)
+        max_checkpoint = max(checkpoints)
 
         file_list = list(filter(lambda f: f.datetime > max_checkpoint, file_list))
 
-        # no files?
+
+        if not file_list: 
+            logging.info('No files to process after {}. Exiting.'.format(max_checkpoint))
+            exit()
+
+    new_checkpoint = max(file_list, key=lambda f: f.datetime).datetime
     
     conn = db.connect('./visitpay-database.db')
-    conn.execute('''PRAGMA foreign_keys = ON;''')
+    conn.execute('''PRAGMA foreign_keys = ON;''') # enforce key constraints for sqlite
+
     for ftype in types: # for each file type
-        files = filter(lambda f: f.ftype == ftype, file_list)
-        files = sorted(files, key= lambda o: o.datetime)
+        files = filter_files_by_type(file_list, ftype)
 
         for file in files:
             with open(file.path) as csvfile:
@@ -62,12 +74,15 @@ if __name__ == '__main__':
 
                 cols = reader.__next__()
                 str_cols = ','.join(['`' + col + '`' for col in cols])
-                col_num = len(cols)
-                place_holders = ','.join(['?']*col_num)
-                insert_sql = 'INSERT INTO `{}` ({}) VALUES ({})'.format(ftype, str_cols, place_holders) # possible injection point, but this isn't user facing.
-                # implement psert capability or assume its append only
+                place_holders = ','.join(['?']*len(cols))
+
+                insert_sql = 'INSERT INTO `{}` ({}) VALUES ({}) ON CONFLICT DO NOTHING'.format(ftype, str_cols, place_holders) # possible injection vector at the column name level, but this isn't user facing.
 
                 data = [tuple(row) for row in reader]
+
+                if len(cols) != min([len(d) for d in data]):
+                    logging.error('Bad data file. Unable to parse correctly')
+
                 try:
                     conn.executemany(insert_sql, data)
                     conn.commit()
@@ -76,11 +91,12 @@ if __name__ == '__main__':
                 except db.IntegrityError as e:
                     print(e)
 
-                    logging.warning(str(e) + insert_sql)
+                    logging.warning(str(e) + insert_sql + file.path)
 
     conn.close()
     
-    checkpoint_datetime = datetime.now().strftime('%Y%m%d_%H%M%S')
     if not exists(checkpoint_dir) : makedirs(checkpoint_dir)
+    checkpoint_datetime = new_checkpoint.strftime('%Y%m%d_%H%M%S')
     open(join(checkpoint_dir, checkpoint_datetime), 'a').close() # make checkpoint after success
+
     logging.info('Checkpoint saved at {}.'.format(checkpoint_datetime))
