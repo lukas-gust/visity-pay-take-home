@@ -7,10 +7,6 @@ from os.path import isfile, join, exists, basename
 from datetime import datetime
 import sqlite3 as db
 
-import pdb
-
-
-
 data_dir = './data'
 checkpoint_dir = './data/checkpoint'
 
@@ -44,21 +40,22 @@ def filter_checkpoints(checkpoint_dir):
 if __name__ == '__main__':
     logging.basicConfig(filename='app.log', level=logging.DEBUG, format='%(asctime)s %(levelname)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
 
-    types = ['Procedure', 'Visit', 'Transaction']
+    types = ['Procedure', 'Visit', 'Transaction'] # this could be dynamic based on db
 
     file_list = [VisitPayFile(join(data_dir, f)) for f in listdir(data_dir) if isfile(join(data_dir, f))]
 
-    if exists(checkpoint_dir): # filter files by datefrom checkpoint to now
+    if exists(checkpoint_dir): # filter files by datetime from checkpoint to now
         checkpoints = filter_checkpoints(checkpoint_dir)
 
         max_checkpoint = max(checkpoints)
 
         file_list = list(filter(lambda f: f.datetime > max_checkpoint, file_list))
 
-
         if not file_list: 
             logging.info('No files to process after {}. Exiting.'.format(max_checkpoint))
             exit()
+
+    logging.info('Processing {} files.'.format(len(file_list)))
 
     new_checkpoint = max(file_list, key=lambda f: f.datetime).datetime
     
@@ -73,15 +70,15 @@ if __name__ == '__main__':
                 reader = csv.reader(csvfile, delimiter=file.delimiter)
 
                 cols = reader.__next__()
-                str_cols = ','.join(['`' + col + '`' for col in cols])
+                str_cols = ','.join(['`' + col + '`' for col in cols]) # format column names
                 place_holders = ','.join(['?']*len(cols))
 
                 insert_sql = 'INSERT INTO `{}` ({}) VALUES ({}) ON CONFLICT DO NOTHING'.format(ftype, str_cols, place_holders) # possible injection vector at the column name level, but this isn't user facing.
 
-                data = [tuple(row) for row in reader]
+                data = [tuple(row) for row in reader] # this could be refactored into a yield in case of large volume
 
                 if len(cols) != min([len(d) for d in data]):
-                    logging.error('Bad data file. Unable to parse correctly')
+                    logging.error('Bad data file. Unable to parse correctly.')
 
                 try:
                     conn.executemany(insert_sql, data)
@@ -95,7 +92,8 @@ if __name__ == '__main__':
 
     conn.close()
     
-    if not exists(checkpoint_dir) : makedirs(checkpoint_dir)
+    if not exists(checkpoint_dir) : makedirs(checkpoint_dir) # make the checkpoint directory if it doesn't exist
+
     checkpoint_datetime = new_checkpoint.strftime('%Y%m%d_%H%M%S')
     open(join(checkpoint_dir, checkpoint_datetime), 'a').close() # make checkpoint after success
 
