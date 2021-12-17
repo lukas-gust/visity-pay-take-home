@@ -14,11 +14,9 @@ Some things we will be assuming for this design.
 2. We assume the application will be run on it's daily basis using a cron job or equivalent. That is the application will not be running when it is meant to be idle. 
    1. This is mimic a serverless architecture where we only run the compute when we need it.
    2. This does not line up with assumption #1 since the local storage on a serverless application is typically ephemeral, but in reality can be dealt with by hosting data external.
-3. We assume that we do not need to process any hard deletes. We only need to handle upserts.
+3. We assume that the process is append only.
 4. An sqlite database will take the place of hosting an external database.
 5. We assume the datetimes in the filenames are in UTC.
-
-
 
 ## Design
 
@@ -32,7 +30,7 @@ Here is a rough program flowchart in text form.
    2. Else capture all the files and process in ascending order by the datetime on file name.
 3. Parse file names further to separate types.
 4. Parse the .txt files into a data structures.
-5. Upsert the records for each type in this order - Procedure, Visit, Transaction - into an sqlite database.
+5. Insert the records for each type in this order - Procedure, Visit, Transaction - into an sqlite database.
 
 Some things to be concerned about. The .txt files have little to no standard of how they are structured. We have no guarantee that the files will arrive in the same structure currently present or if the values are sanitized before hand or if the datetimes in the file names are complete. Some of this we will handle and somethings we just cannot handle. In those cases where we cannot handle it we would have to log and alert the issues. 
 
